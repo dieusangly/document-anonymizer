@@ -1,4 +1,14 @@
 # Agents
 AGENTS.md
 .agents/
-
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+.envrc
+.local/
+data/synthetic/*
+artifacts/
+test-results/
+*.pyc

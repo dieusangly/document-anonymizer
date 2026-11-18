@@ -1,0 +1,24 @@
+[browser]
+gatherUsageStats = false
+[client]
+toolbarMode = "minimal"
+[ui]
+hideTopBar = true
+[server]
+address = "127.0.0.1"
+headless = true
+maxUploadSize = 10
+fileWatcherType = "none"
+allowRunOnSave = false
+[theme]
+base = "dark"
+backgroundColor = "#1B1F24"
+secondaryBackgroundColor = "#34475C"
+textColor = "#FFFFFF"
+primaryColor = "#3973B7"
+borderColor = "#47596D"
+showWidgetBorder = true
+baseRadius = "0.65rem"
+buttonRadius = "0.5rem"
+font = "sans-serif"
+dataframeHeaderBackgroundColor = "#34475C"

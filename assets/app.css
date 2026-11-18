@@ -1,0 +1,106 @@
+/* Native Streamlit controls, styled without remote fonts or scripts. */
+[data-testid="stMainBlockContainer"] {
+    max-width: 1120px;
+    padding: 3.5rem 2rem 4rem;
+}
+h1 {
+    font-size: clamp(2rem, 4vw, 2.8rem) !important;
+    font-weight: 650 !important;
+    letter-spacing: -0.025em;
+    padding-bottom: 0.45rem !important;
+}
+h2, h3 {
+    letter-spacing: -0.025em;
+}
+.app-intro {
+    color: #C7D2DF;
+    font-size: 1.12rem;
+    margin: 0 0 0.6rem;
+    line-height: 1.6;
+}
+.app-details {
+    color: #AABBCF;
+    font-size: 0.85rem;
+    padding-bottom: 1.6rem;
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid #35404C;
+}
+.st-key-document_panel {
+    background: #242A32;
+    border-color: #3B4755;
+    padding: 1.65rem;
+}
+[data-testid="stWidgetLabel"] p {
+    font-weight: 550;
+    color: #E8EEF6;
+}
+[data-testid="stRadio"] [role="radiogroup"] {
+    gap: 0.55rem;
+}
+[data-testid="stRadio"] [role="radiogroup"] label {
+    border: 1px solid #52667E;
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    margin: 0;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+    background: #344F70;
+    border-color: #91B5E2;
+}
+[data-testid="stRadio"] [role="radiogroup"] label:has(input:focus-visible) {
+    outline: 2px solid #A6C9F5;
+    outline-offset: 3px;
+}
+[data-testid="stFileUploaderDropzone"] {
+    background: #2C3A4B;
+    border: 1px dashed #7B96B7;
+    border-radius: 0.75rem;
+    padding: 2rem 1.4rem;
+    min-height: 155px;
+}
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #C4D1E2;
+    opacity: 1;
+}
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    color: #BCCBDD;
+    opacity: 1;
+}
+[data-testid="stButton"] button,
+[data-testid="stDownloadButton"] button {
+    min-height: 2.65rem;
+    padding-inline: 1.15rem;
+    font-weight: 550;
+}
+[data-testid="stExpander"] {
+    background: #242A32;
+    border-radius: 0.65rem;
+}
+[data-testid="stImage"] img {
+    border-radius: 0.35rem;
+}
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] {
+        padding: 1.8rem 1rem 2.5rem;
+    }
+    .st-key-document_panel {
+        padding: 1rem;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 1.4rem 0.9rem;
+    }
+    [data-testid="stRadio"] [role="radiogroup"] label {
+        padding: 0.5rem 0.65rem;
+    }
+    .st-key-document_panel [data-testid="stHorizontalBlock"] {
+        gap: 1.25rem;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-testid="stRadio"] [role="radiogroup"] label {
+        transition: none;
+    }
+}

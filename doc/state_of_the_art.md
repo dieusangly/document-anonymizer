@@ -1,50 +1,73 @@
-# Open-source document anonymization and de-anonymization tools
+# Open-source document pseudonymization tools
 
-**Updated:** 12 November 2026  
-**Scope:** Windows, macOS and Linux; priority is reversible pseudonymization of **DOCX/PDF**, restoration of identities in **AI-generated outputs**, persistent mappings, and preservation of document formatting.
+**Survey date:** 12 November 2026. **Scope:** Windows, macOS and Linux;
+DOCX/PDF formatting, persistent mappings and identity restoration in AI-generated outputs.
 
-> **Bottom line:** None of the projects has been independently verified to satisfy *all* these requirements at production-grade fidelity. "Multilingual" means the detection stack can process more than one language; it does **not** establish high recall on mixed-language documents. Assessments below are qualitative judgments based on public project documentation, not comparative benchmarks.
+These are assessments of public project documentation, not comparative benchmarks.
+No project was independently verified to meet every requirement at production
+fidelity. Multilingual models, OCR packs and regional identifier rules provide
+different kinds of coverage; none establishes recall on mixed-language documents.
+The POC's engine choice is documented separately in [architecture](architecture.md).
 
 ## Comparison
 
-| Application | OS / interface | DOCX/PDF support and format preservation | Restoration / mapping | Supported languages | Multilingual capacity / language assessment | Local processing / detection engine | License / source |
-|---|---|---|---|---|---|---|---|
-| **PII Shield** | Windows, macOS, Linux; CLI and Claude integration | DOCX: documented formatting and tracked-change preservation. PDF: supported, but native layout/structure fidelity not established. | Persistent reusable mappings; de-anonymizes text and DOCX, including AI outputs; configurable retention (default reportedly 7 days). | Multilingual NER (no exhaustive language list published); country-specific ID rules for UK, DE, FR, IT, ES, CY, FI and EU-wide patterns. | **Promising** for mixed-language European text, but language-specific NER accuracy and mixed-language recall unverified. Identifier-rule coverage must not be mistaken for full linguistic coverage. | **Yes**, including offline CLI; GLiNER PII Base using ONNX Runtime Node and Transformers.js, plus regex/identifier rules. | MIT · [GitHub](https://github.com/gregmos/PII-Shield) |
-| **DocCloak** | Windows, macOS, Linux; local/browser-based UI | DOCX: formatting-oriented export. PDF: text layer retained where safely editable; some pages rasterized; annotations, forms, bookmarks, attachments and metadata removed. | Restores AI responses while session is open; identity mappings are **memory-only** and lost when tab closes. | Explicit UI/detection languages: EN, PL, DE, FR, ES, PT, SV, NO; optional BardS.ai EU PII model advertises **24+ EU languages**. | **Strong European-language candidate**; selectable multilingual GLiNER/BardS.ai models and regional rules. Mixed-language accuracy still needs validation. | **Yes**, in browser after initial model download; GLiNER and BardS.ai NER via ONNX Runtime WebAssembly, 175+ regex rules, Tesseract WASM OCR. | AGPL-3.0 · [GitHub](https://github.com/WLojek/DocCloak) |
-| **Rizzo PII** | Windows, macOS (Apple Silicon), Linux; native Tauri app | PDF: direct layout-oriented anonymization; no native DOCX input documented; exact PDF structure recovery unverified. | Local reversible dictionary, including restoration of identities in AI outputs. | IT, EN, FR, DE, ES, NL, HI, TE (training data); **Italian is the primary target**. | **Excellent Italian focus**, promising but less validated elsewhere; multilingual training is documented, yet mixed-language performance and non-Italian accuracy are not established by comparable benchmarks. | **Yes**, bundled local CPU inference; ~0.3B-parameter mmBERT/ModernBERT token classifier, with rules and checksum checks. | MIT · [GitHub](https://github.com/Rizzo-AI-Academy/rizzo-pii) |
-| **Lethe** | Windows, macOS, Linux; local GUI (Windows installer, pipx cross-platform) | DOCX, PPTX, XLSX and PDF input; PDF conversion to DOCX prevents native PDF round-trip; possible fine-formatting loss; embedded content limitations. | **Encrypted persistent vault**; can restore placeholders in AI replies and other supported files; does not guarantee byte-identical original recovery. | English initially; configurable additional NLP and OCR languages, explicitly including Chinese, Japanese and Korean; customizable dictionary works across languages. | **Most configurable for diverse scripts**; extra language-model downloads needed; multilingual and mixed-script detection quality requires testing. | **Yes**; dictionary + regex; optional Microsoft Presidio/spaCy NER, Tesseract/PDFium OCR. | Apache-2.0 · [GitHub](https://github.com/moonlight-lupin/lethe) |
-| **GoCalma** | Windows, macOS, Linux; local browser | PDF only, including scans; anonymized PDF is rasterized; encrypted recovery file can restore the original PDF. | **Exact original PDF recovery** via encrypted `.gocalma` file; restoration in arbitrary AI-generated outputs not documented. | EN, DE, FR, IT, ES (including local OCR data). | **Good for five European languages**; mixed-language recognition and detection accuracy need validation. | **Yes**, in browser; local NER with WebGPU/WASM fallback, rules, and local OCR. | MIT · [GitHub](https://github.com/ketchalegend/gocalma) |
-| **Nvisy Studio** | Windows, macOS, Linux; Tauri desktop and web app | Document redaction pipelines; exact DOCX/PDF round-trip preservation not verified. | Pseudonymization ecosystem; complete AI-output re-identification workflow not verified. | Not clearly specified for a standard deployment; depends on backend components. | **Unverified**; do not assume multilingual PII detection from an internationalized user interface. | **Configuration-dependent**: desktop shell connects to hosted API by default or a self-hosted server; specific detection models depend on backend. | AGPL-3.0 · [GitHub](https://github.com/nvisycom/studio) |
-| **Anonymizer (arcane-tl)** | Windows, macOS installers; CLI; Linux installer not established | DOCX, PDF (including scanned PDF OCR); native redaction is best effort and requires checking residual data and formatting. | Stable placeholder generation and optional sensitive JSON mapping; automatic complete AI-output restoration not documented. | EN, FI; optional SV model/detection support. | **Limited** for broad multilingual documents; English/Finnish focus and per-document language detection, with intra-document mixing not validated. | **Yes by default**; regex/patterns, spaCy NER and OCR; optional local Ollama or explicit remote LLM integration (remote mode is **not** offline). | MIT · [GitHub](https://github.com/arcane-tl/anonymizer) |
+| Application | OS / interface | Documents and fidelity | Restoration / mappings | Languages and detection | License / source |
+| --- | --- | --- | --- | --- | --- |
+| **PII Shield** | Windows, macOS, Linux; CLI and Claude integration | DOCX formatting/tracked-change preservation documented; PDF supported, native fidelity unverified | Persistent reusable mappings; text/DOCX and AI-output restoration; configurable retention, reportedly 7 days by default | Offline GLiNER PII Base via ONNX Runtime Node/Transformers.js plus rules. No exhaustive model language list; identifier rules cover UK, DE, FR, IT, ES, CY, FI and EU-wide patterns. Language-specific recall unverified | MIT · [Source](https://github.com/gregmos/PII-Shield) |
+| **DocCloak** | Windows, macOS, Linux; local browser UI | Formatting-oriented DOCX export; PDF text retained where editable, some pages rasterized; annotations, forms, bookmarks, attachments and metadata removed | AI-response restoration during the session; mappings are memory-only and lost on tab close | Local GLiNER/BardS.ai NER via ONNX WASM, 175+ regex rules and Tesseract WASM. Explicit languages: EN, PL, DE, FR, ES, PT, SV, NO; optional BardS.ai model advertises 24+ EU languages. Mixed-language recall unverified | AGPL-3.0 · [Source](https://github.com/WLojek/DocCloak) |
+| **Rizzo PII** | Windows, macOS Apple Silicon, Linux; Tauri app | Layout-oriented PDF anonymization; native DOCX input and exact PDF structure recovery unverified | Local reversible dictionary, including AI-output restoration | Local CPU inference with a ~0.3B mmBERT/ModernBERT token classifier, rules and checksums. Training languages: IT, EN, FR, DE, ES, NL, HI, TE; Italian is primary. Comparable non-Italian/mixed-language accuracy unverified | MIT · [Source](https://github.com/Rizzo-AI-Academy/rizzo-pii) · [Training data](https://github.com/Rizzo-AI-Academy/rizzo-pii/blob/main/docs/DATASET.md) |
+| **Lethe** | Windows, macOS, Linux; GUI, Windows installer or pipx | DOCX/PPTX/XLSX/PDF; PDF-to-DOCX conversion prevents native PDF round trips; fine formatting and embedded content have limits | Encrypted persistent vault; restores placeholders in AI replies and supported files, not original bytes | Local dictionary/regex, optional Presidio/spaCy and Tesseract/PDFium OCR. English initially; configurable models/OCR, including Chinese, Japanese and Korean. Additional downloads and accuracy checks required | Apache-2.0 · [Source](https://github.com/moonlight-lupin/lethe) |
+| **GoCalma** | Windows, macOS, Linux; local browser | PDF only, including scans; rasterized anonymized output | Encrypted `.gocalma` recovery file can restore the original PDF; arbitrary AI-output restoration undocumented | Local NER via WebGPU/WASM fallback, rules and OCR. EN, DE, FR, IT, ES; detection accuracy and mixed-language recall unverified | MIT · [Source](https://github.com/ketchalegend/gocalma) |
+| **Nvisy Studio** | Windows, macOS, Linux; Tauri/web | Redaction pipelines; exact DOCX/PDF round-trip fidelity unverified | Pseudonymization ecosystem; complete AI-output restoration unverified | Configuration-dependent: hosted API by default or self-hosted backend. Models/languages depend on the backend; translated UI does not establish multilingual detection | AGPL-3.0 · [Source](https://github.com/nvisycom/studio) |
+| **Anonymizer (arcane-tl)** | Windows/macOS installers and CLI; Linux installer unverified | DOCX/PDF, including OCR; native redaction is best effort and needs residual-data/layout checks | Stable placeholders and optional sensitive JSON mapping; complete automatic AI-output restoration undocumented | Local regex, spaCy and OCR by default; optional local Ollama or explicit remote LLM. EN, FI, optional SV; per-document language detection, mixed-language performance unverified. Remote mode is not offline | MIT · [Source](https://github.com/arcane-tl/anonymizer) |
 
-**Language abbreviations:** EN English; FR French; DE German; ES Spanish; IT Italian; NL Dutch; PL Polish; PT Portuguese; SV Swedish; NO Norwegian; FI Finnish; HI Hindi; TE Telugu; CY Cyprus (in this table, country-specific rules rather than a linguistic model). "Supported languages" can refer to models, training languages, OCR packs, or identifier rules; the table distinguishes these wherever possible.
+Language codes: EN English, FR French, DE German, ES Spanish, IT Italian, NL Dutch,
+PL Polish, PT Portuguese, SV Swedish, NO Norwegian, FI Finnish, HI Hindi, TE Telugu.
+UK and CY refer to country-specific identifier rules, not language models.
 
-## Recommended evaluation order
+## Evaluation priorities
 
-1. **PII Shield — DOCX restoration first.** Verify the format-preserving DOCX anonymize → AI-edit → restore cycle, mapping persistence, and mixed French/English detection. Separately inspect PDF fidelity.
-2. **DocCloak — DOCX/PDF and multilingual detection first.** Compare French and mixed-language recall, preserved text layers, visual formatting, and what happens after the browser session closes.
-3. **Lethe — long-lived encrypted mapping first.** Test persistent restoration, configured non-European languages, and the loss introduced by PDF-to-DOCX conversion.
-4. **Rizzo PII — PDF and Italian documents first.** Check the PDF visual result, non-Italian recall, and mixed-language documents.
-5. **GoCalma — exact original PDF recovery first.** Verify decryption and file-hash matching, but do not assume AI-output restoration.
+1. **PII Shield:** DOCX anonymize → AI-edit → restore, mapping persistence and PDF fidelity.
+2. **DocCloak:** French/mixed-language recall, retained text layers and session-loss behavior.
+3. **Lethe:** Persistent encrypted mappings, non-European languages and PDF conversion losses.
+4. **Rizzo PII:** PDF layout, Italian detection and non-Italian/mixed-language recall.
+5. **GoCalma:** Exact PDF recovery with a hash comparison; AI-output restoration is a separate capability.
 
-## Non-negotiable acceptance tests
+## Acceptance checks for candidate tools
 
-- **Original recovery:** Recover the original file with a hash match where possible. Token replacement alone is not byte-identical file restoration; retaining an encrypted original is often necessary.
-- **AI-output restoration:** Restore identities in newly authored or rearranged AI output, including edited DOCX/PDF files—not only pasted plain text—and test malformed placeholders.
-- **Format preservation:** Compare typography, pagination, tables, headers/footers, styles, comments, tracked changes, annotations, bookmarks, forms, text/OCR layers, embedded fonts and digital signatures.
-- **Language accuracy:** Test French, English, and a single French/English mixed document; add language combinations relevant to your usage. Measure false negatives separately by language, PII type, and scan/OCR quality.
-- **Privacy and persistence:** Work offline after models are installed; inspect network traffic, mapping encryption, cross-session recovery, import/export, backups, and retention rules. A "local browser" front end does not automatically mean all backend processing is local.
+- **Recovery:** Compare file hashes where exact recovery is claimed. Placeholder
+  replacement alone does not reconstruct original bytes; an encrypted original may be needed.
+- **AI-output restoration:** Restore identities in newly authored/rearranged DOCX
+  and PDF content, including malformed-placeholder handling.
+- **Formatting:** Inspect fonts, pagination, tables, headers/footers, styles,
+  comments, revisions, annotations, bookmarks, forms, OCR layers and signatures.
+- **Detection:** Measure false negatives by language, entity type and scan quality
+  on French, English and mixed-language documents, plus relevant additional languages.
+- **Privacy and persistence:** Inspect offline/network behavior, encrypted mappings,
+  cross-session recovery, import/export, backups and retention. A local browser UI
+  does not establish local backend processing.
 
-**Important:** Reversible pseudonymization is not irreversible anonymization under GDPR. Unmasked contextual information can still identify someone.
+Reversible pseudonymization is not irreversible anonymization; remaining context
+can still identify someone. [Piixie](https://piixie.ai/docs/) was excluded from the
+open-source comparison because public source code and an open-source license were
+not verified, despite its reversible native-format claims.
 
-**Not included as confirmed open source:** [Piixie](https://piixie.ai/docs/) — interesting reversible native-format claims, but publicly available source code and an open-source license were not verified.
+# Public benchmark datasets (banking and insurance)
 
-## Project documentation
+**All datasets below use synthetic personal data.** XFUND is the exception in provenance only: its form *templates* are collected from real sources, but their filled-in data is synthetic. None is an open corpus of real client records.
 
-- [PII Shield](https://github.com/gregmos/PII-Shield)
-- [DocCloak](https://github.com/WLojek/DocCloak)
-- [Rizzo PII](https://github.com/Rizzo-AI-Academy/rizzo-pii) · [Training language breakdown](https://github.com/Rizzo-AI-Academy/rizzo-pii/blob/main/docs/DATASET.md)
-- [Lethe](https://github.com/moonlight-lupin/lethe)
-- [GoCalma](https://github.com/ketchalegend/gocalma)
-- [Nvisy Studio](https://github.com/nvisycom/studio)
-- [Anonymizer](https://github.com/arcane-tl/anonymizer)
+| Dataset | Domain / languages | Provenance | Data and annotations | Best use |
+|---|---|---|---|---|
+| [Gretel Finance PII](https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual) | Finance; EN/FR + 5 others | Synthetic | 55,940 texts; 29 PII classes and spans | Financial PII detection |
+| [Strata Insurance Corpus](https://huggingface.co/datasets/NikolaiSachok/strata-insurance-corpus) | Insurance; EN/FR + 4 others | Synthetic | 1,311 files (PDF/DOCX/JPG etc.); PII index | Multiformat redaction and OCR |
+| [PDF-PII-Bench](https://github.com/callixdev/pdf-pii-bench) | Banking + general; EN (US) | Synthetic | 50 PDFs; 1,121 verified PII spans | PDF-level PII scoring |
+| [Bankstatemently](https://github.com/bankstatemently/bank-statement-parsing-benchmark) | Bank statements; multiple languages, incl. French (Canada) | Synthetic | Statement PDFs; no public PII-span labels | PDF and layout robustness |
+| [Synthetic Financial PII](https://data.mendeley.com/datasets/tzrjx692jy/1) | Finance; primarily EN | Synthetic | Financial texts with PII offsets; ~45k training entries | Finance-specific NER |
+| [FR-PII-Bench](https://huggingface.co/datasets/JaqueBill/fr-pii-bench) | Administrative/financial; FR | Synthetic | 300 texts; 13 PII classes and offsets | French recall and false positives |
+| [AI4Privacy PII-Masking-200k](https://huggingface.co/datasets/ai4privacy/pii-masking-200k) | General; EN/FR/DE/IT | Synthetic | ~209k texts; 54 PII classes | Multilingual PII regression |
+| [OpenPII 1M](https://huggingface.co/datasets/ai4privacy/pii-masking-openpii-1m) | General; EN/FR + 21 others | Synthetic | 1.43m texts; 19 PII classes | Large-scale multilingual detection |
+| [NVIDIA Nemotron-PII](https://huggingface.co/datasets/nvidia/Nemotron-PII) | General incl. finance/insurance; EN | Synthetic | 100k texts; 55+ PII/PHI classes | Domain-general NER |
+| [XFUND](https://github.com/doc-analysis/XFUND) | Forms; FR + 6 others (no EN) | **Mixed:** real templates, synthetic entries | 199 forms/language; layout labels, **no PII spans** | OCR and layout testing |
+
+**Evaluate separately:** PII recall/precision by type and language; OCR and scan failures; irreversible PDF redaction (including hidden text/metadata); layout fidelity; and reversible mapping/re-identification. Text-span benchmarks alone cannot validate secure document redaction.
+
