@@ -28,6 +28,7 @@ class Line:
     box: tuple
     size: float
     color: tuple = (0, 0, 0)
+    native: bool = False
 
 
 @dataclass
@@ -76,6 +77,20 @@ def ocr_lines(png, width, height):
     return list(groups.values())
 
 
+def _column_groups(items):
+    """Group nearby text boxes without joining distant table columns."""
+    segment = []
+    for item, box in items:
+        if segment:
+            previous = segment[-1][1]
+            if box.x0 - previous.x1 > max(12, 2 * min(previous.height, box.height)):
+                yield segment
+                segment = []
+        segment.append((item, box))
+    if segment:
+        yield segment
+
+
 def _native_lines(page):
     # Rotated pages/text and invisible OCR layers are read from rendered pixels instead.
     if page.rotation:
@@ -107,15 +122,20 @@ def _native_lines(page):
                 continue
             if any(box.intersects(rect) for rect in excluded):
                 continue
-            spans = line["spans"]
-            text = "".join(s["text"] for s in spans)
-            if not text.strip() or "\ufffd" in text:
-                continue
-            first = spans[0]
-            color = fitz.sRGB_to_pdf(first["color"])
-            if min(color) > 0.9:
-                color = (0, 0, 0)
-            lines.append(Line(text, tuple(box), first["size"], color))
+            for group in _column_groups(
+                [(span, fitz.Rect(span["bbox"])) for span in line["spans"]]
+            ):
+                box = fitz.Rect(group[0][1])
+                for _, span_box in group[1:]:
+                    box |= span_box
+                text = "".join(span["text"] for span, _ in group)
+                if not text.strip() or "\ufffd" in text:
+                    continue
+                first = group[0][0]
+                color = fitz.sRGB_to_pdf(first["color"])
+                if min(color) > 0.9:
+                    color = (0, 0, 0)
+                lines.append(Line(text, tuple(box), first["size"], color, native=True))
     return lines
 
 
@@ -150,16 +170,25 @@ def read_pdf(data):
                         (text, box)
                         for text, box in group
                         if not any(
-                            fitz.Rect(line.box).contains((box.tl + box.br) / 2) for line in native
+                            fitz.Rect(line.box).contains((box.tl + box.br) / 2)
+                            # OCR boxes can extend below a native glyph, placing
+                            # their center beside the next line. Matching text
+                            # with substantial overlap is still native content,
+                            # not an extra OCR line or a neighboring column.
+                            or (
+                                text in line.text
+                                and (fitz.Rect(line.box) & box).get_area() >= box.get_area() * 0.25
+                            )
+                            for line in native
                         )
                     ]
-                    if remaining:
-                        box = fitz.Rect(remaining[0][1])
-                        for _, word_box in remaining[1:]:
+                    for segment in _column_groups(remaining):
+                        box = fitz.Rect(segment[0][1])
+                        for _, word_box in segment[1:]:
                             box |= word_box
                         native.append(
                             Line(
-                                " ".join(t for t, _ in remaining),
+                                " ".join(t for t, _ in segment),
                                 tuple(box),
                                 max(5, box.height * 0.9),
                             )
@@ -174,14 +203,24 @@ def read_pdf(data):
 
 
 def export_pdf(pages, transform, marker):
-    """Erase text pixels before drawing transformed text into a fresh PDF."""
+    """Rebuild native text and changed OCR regions, preserving other pixels."""
     font = fitz.Font("helv")
     with fitz.open() as output:
         for original in pages:
+            rewritten = []
+            for line in original.lines:
+                updated = "".join(
+                    line.text[a:b] if value is None else value
+                    for a, b, value in transform(line.text)
+                )
+                # Unchanged OCR may describe a logo or illustration incorrectly.
+                # Keep its actual pixels instead of replacing them with that guess.
+                if line.native or updated != line.text:
+                    rewritten.append((line, updated))
             bitmap = Image.open(BytesIO(original.png)).convert("RGB")
             draw = ImageDraw.Draw(bitmap)
             sx, sy = bitmap.width / original.width, bitmap.height / original.height
-            for line in original.lines:
+            for line, _ in rewritten:
                 x0, y0, x1, y1 = line.box
                 draw.rectangle(
                     ((x0 - 0.8) * sx, (y0 - 0.8) * sy, (x1 + 0.8) * sx, (y1 + 0.8) * sy),
@@ -191,11 +230,7 @@ def export_pdf(pages, transform, marker):
             bitmap.save(stream, format="PNG")
             page = output.new_page(width=original.width, height=original.height)
             page.insert_image(page.rect, stream=stream.getvalue())
-            for line in original.lines:
-                updated = "".join(
-                    line.text[a:b] if value is None else value
-                    for a, b, value in transform(line.text)
-                )
+            for line, updated in rewritten:
                 if not updated:
                     continue
                 x0, y0, x1, y1 = line.box

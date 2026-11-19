@@ -128,7 +128,8 @@ def main():
         entities = st.session_state.entities
         st.subheader("Review sensitive information")
         st.caption(
-            "Uncheck false positives or change their type. A selected value replaces every exact occurrence."
+            "Detected with PII Shield. Uncheck false positives or change their type. "
+            "A selected value replaces every exact occurrence."
         )
         rows = [
             {
@@ -175,20 +176,27 @@ def main():
             manual = [(v.strip(), manual_type) for v in manual_text.splitlines() if v.strip()]
             st.session_state.pop("anonymized", None)
             st.session_state.pop("restored", None)
-            st.session_state.anonymized = anonymize(document, selected, vault, case, manual)
+            with st.spinner("Anonymizing document and preparing your download…", show_time=True):
+                st.session_state.anonymized = anonymize(document, selected, vault, case, manual)
         if "anonymized" in st.session_state:
             result = st.session_state.anonymized
             st.success(f"Anonymized {result.count} occurrences. Review the result before sharing.")
             preview(result.data, result.kind, result.text, "Anonymized preview")
             download(result, "Download anonymized document", "anonymized")
             if st.button("Reverse Anonymize", type="primary"):
-                st.session_state.restored = restore(
-                    load_document(result.data, "file." + result.kind), vault, case
-                )
+                with st.spinner(
+                    "Restoring original values and preparing your download…", show_time=True
+                ):
+                    st.session_state.restored = restore(
+                        load_document(result.data, "file." + result.kind), vault, case
+                    )
     else:
         if st.button("Reverse Anonymize", type="primary"):
             st.session_state.pop("restored", None)
-            st.session_state.restored = restore(document, vault, case)
+            with st.spinner(
+                "Restoring original values and preparing your download…", show_time=True
+            ):
+                st.session_state.restored = restore(document, vault, case)
     if "restored" in st.session_state:
         result = st.session_state.restored
         st.success(f"Restored {result.count} placeholder occurrences.")

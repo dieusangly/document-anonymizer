@@ -1,0 +1,7 @@
+{
+  "name": "document-anonymizer-engine",
+  "private": true,
+  "description": "Pinned local PII Shield detection runtime for the Streamlit application",
+  "engines": { "node": ">=22" },
+  "dependencies": { "pii-shield": "2.2.0" }
+}

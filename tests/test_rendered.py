@@ -14,11 +14,12 @@ from docx.enum.section import WD_SECTION_START
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches
+from PIL import Image
 
 from anonymizer.documents import load_document
 from anonymizer.errors import MappingError, UnsupportedDocument
-from anonymizer.rendered import ocr_lines
-from anonymizer.service import anonymize, restore
+from anonymizer.rendered import Line, Page, _native_lines, export_pdf, ocr_lines
+from anonymizer.service import anonymize, restore, transformer
 from anonymizer.vault import Vault
 
 
@@ -229,6 +230,111 @@ Path(sys.argv[3]).write_bytes(result.data)
         check=True,
     )
     assert load_document(restored.read_bytes(), restored.name).text == source.text
+
+
+def test_restore_ignores_overlapping_ocr_fragments(tmp_path, monkeypatch):
+    vault = Vault(tmp_path)
+    original = "RIVERDALE SHOPPING MALL"
+    stored = vault.assign("case", [("Northgate", "ADDRESS"), (original, "ADDRESS")])
+    with fitz.open() as pdf:
+        page = pdf.new_page(width=300, height=500)
+        page.insert_text((81.5, 351.4), "[ADDRESS_001]", fontsize=10.96)
+        page.insert_text((81.5, 360.17), "[ADDRESS_002]", fontsize=5.04)
+        page.draw_circle((250, 450), 10)  # Use the rendered adapter.
+        pdf.set_metadata({"keywords": "document-anonymizer:" + stored["id"]})
+        data = pdf.tobytes()
+
+    # OCR sometimes gives a punctuation fragment a box that extends below its
+    # native line. Its center falls outside, beside the next (smaller) line.
+    words = [
+        [("[ADDRESS_001]", fitz.Rect(82, 342, 165, 350))],
+        [("[ADDRESS_002]", fitz.Rect(82, 355, 120, 361))],
+        [("_", fitz.Rect(122.3, 351.55, 126.3, 362.75))],
+        [("Scanned footer", fitz.Rect(40, 470, 120, 480))],
+    ]
+    with monkeypatch.context() as patch:
+        patch.setattr("anonymizer.rendered.ocr_lines", lambda *args: words)
+        loaded = load_document(data, "anonymized.pdf")
+    assert "_" not in loaded.blocks
+    assert "Scanned footer" in loaded.blocks
+    recovered = restore(loaded, vault, "case")
+    assert original in recovered.text
+    assert "Northgate" in recovered.text
+    assert "[ADDRESS_" not in recovered.text
+    with fitz.open(stream=recovered.data, filetype="pdf") as pdf:
+        assert pdf[0].search_for(original)
+        for block in pdf[0].get_text("dict")["blocks"]:
+            for line in block.get("lines", []):
+                assert pdf[0].rect.contains(fitz.Rect(line["bbox"]))
+
+
+def test_ocr_table_columns_keep_positions_on_roundtrip(tmp_path, monkeypatch):
+    with fitz.open() as pdf:
+        page = pdf.new_page(width=600, height=300)
+        page.insert_text((40, 150), "Alice Johnson", fontsize=14)
+        page.insert_text((300, 150), "123.45", fontsize=14)
+        page.insert_text((450, 150), "678.90", fontsize=14)
+        page.draw_circle((50, 50), 12)  # Use the rendered adapter.
+        words = page.get_text("words")
+        data = pdf.tobytes()
+    # A single OCR line can span several independently positioned table cells.
+    group = [(word[4], fitz.Rect(word[:4])) for word in words]
+    with monkeypatch.context() as patch:
+        patch.setattr("anonymizer.rendered.ocr_lines", lambda *args: [group])
+        patch.setattr("anonymizer.rendered._native_lines", lambda page: [])
+        source = load_document(data, "table.pdf")
+    assert source.blocks == ["Alice Johnson", "123.45", "678.90"]
+    vault = Vault(tmp_path)
+    result = anonymize(source, [], vault, "case", [("Alice Johnson", "PERSON")])
+    anonymized = load_document(result.data, "anonymized.pdf")
+    recovered = restore(anonymized, vault, "case")
+    restored = load_document(recovered.data, "restored.pdf")
+    for document in (anonymized, restored):
+        for text, x in (("123.45", 300), ("678.90", 450)):
+            line = next(line for line in document.pages[0].lines if line.text == text)
+            assert abs(line.box[0] - x) < 2
+    assert "Alice Johnson" not in result.text
+    assert "Alice Johnson" in recovered.text
+
+
+def test_native_table_spans_keep_separate_columns(monkeypatch):
+    with fitz.open() as pdf:
+        page = pdf.new_page(width=600, height=300)
+        for x, text in ((40, "Payment"), (300, "123.45"), (450, "678.90")):
+            page.insert_text((x, 150), text, fontsize=14)
+        spans = [
+            span
+            for block in page.get_text("dict")["blocks"]
+            for line in block.get("lines", [])
+            for span in line["spans"]
+        ]
+        box = fitz.Rect(spans[0]["bbox"])
+        for span in spans[1:]:
+            box |= fitz.Rect(span["bbox"])
+        # PDF extraction can return distant spans as a single logical line.
+        combined = {
+            "blocks": [{"type": 0, "lines": [{"dir": (1, 0), "bbox": box, "spans": spans}]}]
+        }
+        monkeypatch.setattr(page, "get_text", lambda kind: combined)
+        lines = _native_lines(page)
+    assert [line.text for line in lines] == ["Payment", "123.45", "678.90"]
+    assert [round(line.box[0]) for line in lines] == [40, 300, 450]
+
+
+def test_unselected_ocr_logo_keeps_its_pixels():
+    with fitz.open() as pdf:
+        page = pdf.new_page(width=200, height=150)
+        for x, y in ((45, 45), (55, 45), (45, 55), (55, 55)):
+            page.draw_circle((x, y), 8, fill=(0.3, 0.1, 0.05), color=None)
+        png = page.get_pixmap(dpi=180).tobytes("png")
+    # A false OCR reading must not replace an unselected graphic with letters.
+    source = Page(200, 150, png, [Line("CD", (35, 35, 65, 65), 20)])
+    output = export_pdf([source], transformer({}), None)
+    with fitz.open(stream=output, filetype="pdf") as pdf:
+        assert not pdf[0].search_for("CD")
+        exported = pdf.extract_image(pdf[0].get_images()[0][0])["image"]
+    with Image.open(BytesIO(png)) as original, Image.open(BytesIO(exported)) as result:
+        assert original.convert("RGB").tobytes() == result.convert("RGB").tobytes()
 
 
 def test_conversion_does_not_fetch_linked_images_or_execute_fields(tmp_path):

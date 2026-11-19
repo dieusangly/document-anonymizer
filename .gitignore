@@ -1,14 +1,23 @@
-# Agents
+# Agent configuration
 AGENTS.md
 .agents/
+
+# Dependencies
 .venv/
+node_modules/
+
+# Python bytecode and tool caches
 __pycache__/
+*.pyc
 .pytest_cache/
 .ruff_cache/
+
+# Local configuration and application data
 .env
 .envrc
 .local/
+
+# Generated data and artifacts
 data/synthetic/*
 artifacts/
 test-results/
-*.pyc

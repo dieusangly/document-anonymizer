@@ -2,41 +2,48 @@
 
 ## Decision
 
-Use **Microsoft Presidio Analyzer** with local spaCy models and document adapters.
-It fits the Python/Streamlit application and supports custom recognizers without
-an additional model runtime. This was a lightweight integration assessment based
-on the [tool survey](state_of_the_art.md), not a comparative accuracy benchmark.
+Use [**PII Shield 2.2.0**](https://github.com/gregmos/PII-Shield) for detection,
+replacing Presidio/spaCy. GLiNER targets addresses and organizations; pattern
+rules cover EU/UK identifiers. See [validation](validation.md) for measured
+coverage and remaining gaps.
 
-| Candidate | Integration assessment |
-| --- | --- |
-| [PII Shield](https://github.com/gregmos/PII-Shield) | Persistent mappings and native document workflows, but requires Node.js and a separate model/runtime |
-| [DocCloak](https://github.com/WLojek/DocCloak) | Multilingual browser tooling; integrating WASM and persistent encrypted mappings would expand this POC |
-| [Lethe](https://github.com/moonlight-lupin/lethe) | Python and encrypted mappings fit, but PDF-to-DOCX conversion conflicts with PDF output/restoration |
-| [Presidio](https://presidio.dataprivacystack.org/) | Selected for extensible Python recognizers and local spaCy integration; document adapters and persistent mappings are implemented here |
+The Streamlit UI, document adapters and encrypted vault are application-owned.
+PII Shield's CLI exports PDF input as text and lacks scanned-PDF OCR, so it receives
+our extracted text via `scan --json`; our adapters retain PDF downloads and scan
+support. Mapping/reference behavior is documented in the
+[runbook](../README.md#configuration-and-mappings).
 
 ## Components, models and tools
 
 All processing runs locally; no LLM or cloud AI API is used.
-[requirements.txt](../requirements.txt) pins Python dependencies and model versions.
+[requirements.txt](../requirements.txt) pins Python dependencies;
+[package-lock.json](../package-lock.json) pins PII Shield and its Node dependencies.
 See the [runbook](../README.md#install-and-launch) for system dependencies.
 
 | Component | Model/tool | Purpose |
 | --- | --- | --- |
-| Sensitive-data detection | Microsoft Presidio Analyzer | Combines entity recognition with pattern-based email, phone, bank-detail and other detectors |
-| English language model | spaCy `en_core_web_sm` 3.8.0 | Recognizes entities such as person names |
-| French language model | spaCy `fr_core_news_sm` 3.8.0 | French entity recognition |
-| Custom detection | Python regular expressions | Matches bilingual labeled fields such as `Address:`, `Date of birth:` and `Customer ID:` |
+| Sensitive-data detection | PII Shield 2.2.0 | Combines GLiNER, structured identifier rules and entity boundary/overlap handling |
+| Language model | [`knowledgator/gliner-pii-base-v1.0`](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), ONNX Runtime Node 1.22.0 | Names, organizations and addresses using one shared model |
+| Custom detection | Python regular expressions | Supplements bilingual field/contact rules and common English/French postal syntax |
 | OCR | Tesseract, English and French | Reads text from scans and rendered pages |
 | PDF processing | PyMuPDF | Extracts text, renders pages and writes anonymized PDFs |
 | Word processing | python-docx and LibreOffice | Edits simple DOCX content; converts complex documents to PDF |
 | Reversible replacements | Custom Python and Fernet encryption | Assigns placeholders and encrypts persistent restoration mappings |
 | Interface | Streamlit | Upload, review, manual corrections, previews and downloads |
 
-Both spaCy models run on every input. Missing models produce an installation
-error rather than a runtime download. Email validation uses the packaged suffix
-list with network updates disabled; Streamlit telemetry is disabled.
-Detection configuration and known gaps are documented in the
-[runbook](../README.md#configuration-and-mappings).
+After [setup](../README.md#install-and-launch), scans use private temporary
+directories linked to installed models/dependencies. A Node preload guard blocks
+network access and child processes, preventing scan-time npm bootstrap. Streamlit
+telemetry is disabled.
+
+The CLI can return success after NER failure. The adapter requires initialization
+and every inference chunk to complete; this diagnostic-format check must be
+retested on upgrades. Text/diagnostics are deleted after scanning. UTF-16 offsets
+are converted to Python character offsets and validated against source text,
+allowing whitespace normalization. Multiline spans become line/paragraph replacements.
+
+The model card lists English. French/mixed-language coverage is checked only on
+the small local corpus and supplemental rules, not a validated French benchmark.
 
 ## Data flow and modules
 
@@ -50,7 +57,10 @@ vault before replacing values. Missing mappings prevent partial restoration.
 | --- | --- |
 | `anonymizer/documents.py` | Input validation, reading order, simple PDF/DOCX reconstruction and PDF previews |
 | `anonymizer/rendered.py` | Complex DOCX conversion, PDF rasterization, OCR, text-pixel erasure and PDF export |
-| `anonymizer/detection.py` | Presidio/models, domain rules, overlap resolution, repeated values and manual selections |
+| `anonymizer/detection.py` | Type/offset adaptation, domain rules, overlap resolution, repeated values and manual selections |
+| `anonymizer/pii_shield.py` | Version/runtime checks, private CLI scans, timeouts and complete-inference validation |
+| `scripts/setup_pii_shield.py` | Model/dependency setup and offline inference smoke test |
+| `scripts/pii_shield_offline.mjs` | Blocks scan-time network and child-process bootstrap |
 | `anonymizer/vault.py` | Fernet-encrypted JSON per case, keys, file locking and atomic writes |
 | `anonymizer/service.py` | Anonymization, export validation and restoration |
 | `anonymizer/dataset.py` | Four fictional documents and exact-span annotations |
@@ -69,23 +79,23 @@ macros disabled and a private temporary directory. Cached field results remain.
 
 For rendered inputs, PyMuPDF rasterizes pages at 180 DPI. Tesseract supplies text
 and bounding boxes; visible native horizontal text is reused where OCR confirms
-its presence. Rotated/image text comes from OCR. Recognized text rectangles are
-erased from the image before transformed text is drawn into a fresh PDF. The
-service reopens exports and checks that selected values are absent; tests also
-OCR output pixels independently. See the [runbook](../README.md#boundaries) for
-format, fidelity and detection limits.
+its presence. Rotated/image text comes from OCR; large gaps split table columns
+into separate regions. Native text and edited OCR regions are erased and redrawn
+in a fresh PDF. Unchanged OCR regions retain their pixels, so a misread logo is
+not replaced with text. Exports are reopened to check that selected values are
+absent; tests also OCR output pixels independently. See the
+[runbook](../README.md#boundaries) for format, fidelity and detection limits.
 
-Mappings preserve exact spelling and spacing so restoration can recover those
-values; aliases are not merged. A random case marker prevents accidental use of
-the wrong vault but is not a signature. Vault directories use mode `0700`, keys
-and files `0600` on Linux. A process lock and atomic writes protect concurrent
-updates. Document values are not deliberately logged. Storage lifetime, backup
-and key configuration are covered in the [runbook](../README.md#configuration-and-mappings).
+Vault directories use mode `0700`, keys/files `0600` on Linux. Mappings preserve
+exact originals; aliases are not merged. The random case marker is a wrong-case
+guard, not a signature. Document values are not deliberately logged. See the
+[runbook](../README.md#configuration-and-mappings) for assignment, retention, backup
+and key handling.
 
 ## Licenses
 
-Presidio, Streamlit and python-docx use permissive licenses. The selected spaCy
-English model is MIT; the French model is LGPL-LR (see installed model metadata).
+PII Shield, Streamlit and python-docx use permissive licenses. The selected
+GLiNER model is Apache-2.0; ONNX Runtime uses MIT (see their package/model metadata).
 PyMuPDF is **AGPL-3.0 or commercially licensed**; distribution or hosted use must
 comply with its license or use a commercial license. Tesseract uses Apache-2.0;
 LibreOffice primarily uses MPL-2.0. No license has been assigned to this repository.
